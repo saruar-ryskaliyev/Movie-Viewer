@@ -7,9 +7,17 @@
 
 import UIKit
 
+
+
+protocol CollectionViewTableViewCellDelegate: AnyObject {
+    func CollectionViewTableViewCellDidTapCell(_ cell: CollectionViewTableViewCell, viewModel: MoviePreviewViewModel)
+}
+
 class CollectionViewTableViewCell: UITableViewCell {
 
     static let identifier = "CollectionViewTableViewCell"
+    
+    weak var delegate: CollectionViewTableViewCellDelegate?
     
     private var movies: [Movie] = [Movie]()
     
@@ -52,6 +60,18 @@ class CollectionViewTableViewCell: UITableViewCell {
         }
         
     }
+    
+    private func downloadTitleAt(indexPath: IndexPath){
+        
+        DataPersistenceManager.shared.downloadMovieWith(model: movies[indexPath.row]) { result in
+            switch result{
+            case.success():
+                NotificationCenter.default.post(name: NSNotification.Name("downloaded"), object: nil)
+            case.failure(let error):
+                print(error.localizedDescription)
+            }
+        }
+    }
 }
 
 
@@ -74,5 +94,53 @@ extension CollectionViewTableViewCell: UICollectionViewDelegate, UICollectionVie
         return cell
     }
 
+    
+    func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
+        collectionView.deselectItem(at: indexPath, animated: true)
+        
+        
+        let movie = movies[indexPath.row]
+        guard let movieName = movie.original_title else {
+            return
+        }
+        
+        APICaller.shared.getMovie(with: movieName + " trailer") { [weak self] result in
+            switch result {
+            case .success(let videoElement):
+                //print(videoElement.id)
+        
+                
+                guard let movieOverview = movie.overview else {
+                    return
+                }
+                
+                let viewModel = MoviePreviewViewModel(title: movieName, youtubeVideo: videoElement, titleOverview: movieOverview)
+                
+                guard let strongSelf = self else {
+                    return
+                }
+                
+                self?.delegate?.CollectionViewTableViewCellDidTapCell(strongSelf, viewModel: viewModel)
+                
+            case .failure(let error):
+                print(error.localizedDescription)
+            }
+        }
+    }
+    
+
+    func collectionView(_ collectionView: UICollectionView, contextMenuConfigurationForItemsAt indexPaths: [IndexPath], point: CGPoint) -> UIContextMenuConfiguration? {
+                let config = UIContextMenuConfiguration(
+                    identifier: nil,
+                    previewProvider: nil) { _ in
+                        let downloadAction = UIAction(title: "Download", subtitle: nil, image: nil, identifier: nil, discoverabilityTitle: nil, state: .off) { _ in
+                            self.downloadTitleAt(indexPath: indexPaths[0])
+                        }
+                        return UIMenu(title: "", image: nil, identifier: nil, options: .displayInline, children: [downloadAction])
+                    }
+        
+                return config
+    }
+    
     
 }
